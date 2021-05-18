@@ -14,10 +14,11 @@ def template_model(road):
     template_model: Variables / RHS / AUX
     --------------------------------------------------------------------------
     """
-    model_type = 'continuous' # either 'discrete' or 'continuous'
+    model_type = 'discrete' # either 'discrete' or 'continuous'
     model = do_mpc.model.Model(model_type)
 
-    # Certain parameters
+    # parameters
+    dt = 0.1*sec # delta time
     Lh = 40*cm # hull length
     Hh = 12*cm # hull height
     Ls = 16*cm # shoulder gap x from hull CG
@@ -35,12 +36,13 @@ def template_model(road):
     vel = model.set_variable('_u',  'vel')
     dtha = model.set_variable('_u',  'dtha', (3,1))
 
+    # Find next states
 
     # Differential equations
-    model.set_rhs('xh', vel + )
+    model.set_rhs('xh', vel*dt)
     model.set_rhs('yh', )
     model.set_rhs('thh', )
-    model.set_rhs('tha', dtha)
+    model.set_rhs('tha', dtha*dt)
 
     # Calculations to avoid obstacles:
 

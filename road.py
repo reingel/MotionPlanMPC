@@ -51,7 +51,7 @@ class HullPose:
 def two_points_distance(p1, p2):
     return sqrt((p2.x - p1.x)**2 + (p2.z - p1.z)**2)
 
-def three_points2pos_ang(p1, p2, p3):
+def three_points2pos_ang_section(p1, p2, p3):
     x1, z1 = p1.x, p1.z
     x2, z2 = p2.x, p2.z
     x3, z3 = p3.x, p3.z
@@ -66,7 +66,8 @@ def three_points2pos_ang(p1, p2, p3):
     th = th_dot * np.sign(th_cross)
     x = v1_norm * cos(th)
     z = v1_norm * sin(th)
-    return x, z, th
+    section = np.floor(x / v1_norm) + (3 if z < 0 else 0)
+    return x, z, th, section
 
 class Node:
     def __init__(self, x, z):
@@ -95,28 +96,40 @@ class Road:
         for i in range(n-1):
             self.add_segment(i, i+1)
     
-    def get_wheel_angle_and_distances(self, pw):
+    def normal_vectors(self, i=None):
         nseg = len(self.segs)
         assert nseg > 0
-        angles = []
+        normals = []
+        for seg in self.segs:
+            node1 = self.nodes[seg.node_id1]
+            node2 = self.nodes[seg.node_id2]
+            v = np.array([node2.x - node1.x, node2.z - node1.z])
+            v = v / np.linalg.norm(v)
+            n = np.array([-v[1], v[0]])
+            normals.append(n)
+        return normals
+
+    def distance_vectors_with_circle(self, pw):
+        nseg = len(self.segs)
+        assert nseg > 0
         distances = []
         for seg in self.segs:
             node1 = self.nodes[seg.node_id1]
             node2 = self.nodes[seg.node_id2]
-            x, z, th = three_points2pos_ang(pw, node1, node2)
-            d = z - pw.r
-            angles.append(th)
-            distances.append(d)
-        return np.array(angles), np.array(distances)
+            x, z, th, section = three_points2pos_ang_section(pw, node1, node2)
+            d = z -pw.r
+            distances.append((d,section))
+        return np.array(distances)
 
-    def get_wheel_min_distance(self, pw):
-        angles, distances = self.get_wheel_angle_and_distances(pw)
-        d_min = 1e9
-        for ang, dist in zip(angles, distances):
-            if -90*deg < ang < 90*deg and dist > -pw.r:
-                d_min = min(d_min, dist)
-        return d_min
-    
+    def repulse_vector_of_circle(self, pw):
+        normals = self.normal_vectors()
+        distances = self.distance_vectors_with_circle(pw)
+        vector = np.zeros(2)
+        for i, (dist, section) in enumerate(distances):
+            if (section == 0 or section == 3) and (-pw.r < dist < 0):
+                vector += -dist * normals[i]
+        return vector
+
     def get_hull_distances(self, ph):
         nseg = len(self.segs)
         assert nseg > 0

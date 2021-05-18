@@ -27,7 +27,7 @@ import time
 # from template_simulator import template_simulator
 # from template_model import template_model
 
-from road_profile import *
+from road import *
 from phyunits import *
 
 """ User settings: """
@@ -48,14 +48,13 @@ road.auto_connect()
 pw = WheelPosition(0.99, 0.06, 0.06)
 ph = HullPose(0, 0.1, 10*deg, 0.2, 0.06)
 
-w_angles, w_distances = road.get_wheel_angle_and_distances(pw)
-w_d_min = road.get_wheel_min_distance(pw)
+w_distances = road.distance_vectors_with_circle(pw)
+w_d_min = road.repulse_vector_of_circle(pw)
 
-h_distances = road.get_hull_distances(ph)
-h_d_min = road.get_hull_min_distance(ph)
+# h_distances = road.get_hull_distances(ph)
+# h_d_min = road.get_hull_min_distance(ph)
 
-print(np.round(w_angles/deg, 4))
 print(np.round(w_distances, 4))
 print(np.round(w_d_min, 4))
-print(np.round(h_distances, 4))
-print(np.round(h_d_min, 4))
+# print(np.round(h_distances, 4))
+# print(np.round(h_d_min, 4))
