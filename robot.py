@@ -38,7 +38,6 @@ class Robot(object):
             vr = road.repulse_vector_of_wheel(w)
             self.ph += vr
         return self.ph - ph0
-        
 
     def step(self, xh, yh, thh, tha, vel, dtha, dt, road):
         self.ph = Point2D(
@@ -49,6 +48,16 @@ class Robot(object):
         self.tha = tha + dtha*dt
         self.repulse_vector_by_wheels_(road)
         return self.ph.x, self.ph.y, self.thh, self.tha
+    
+    def distance_to_road(self, xh, yh, thh, tha, vel, dtha, dt, road):
+        self.ph = Point2D(
+            xh + vel*dt,
+            yh,
+        )
+        self.thh = thh
+        self.tha = tha + dtha*dt
+        dph = self.repulse_vector_by_wheels_(road)
+        return abs(dph)
 
 
 if __name__ == '__main__':

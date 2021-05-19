@@ -69,15 +69,11 @@ def template_mpc(model):
 
     mpc.bounds['lower','_u','vel'] = -0.1
     mpc.bounds['upper','_u','vel'] = 0.1
-    mpc.bounds['lower','_u','dtha',0] = -0.1
-    mpc.bounds['upper','_u','dtha',0] = 0.1
-    mpc.bounds['lower','_u','dtha',1] = -0.1
-    mpc.bounds['upper','_u','dtha',1] = 0.1
-    mpc.bounds['lower','_u','dtha',2] = -0.1
-    mpc.bounds['upper','_u','dtha',2] = 0.1
+    mpc.bounds['lower','_u','dtha'] = -0.1
+    mpc.bounds['upper','_u','dtha'] = 0.1
 
     # Avoid the obstacles:
-    # mpc.set_nl_cons('obstacles', -model.aux['obstacle_distance'], 0)
+    mpc.set_nl_cons('obstacles', -model.aux['distance_to_road'], 0)
 
     # Values for the masses (for robust MPC)
     # m1_var = 0.2*np.array([1, 0.95, 1.05])

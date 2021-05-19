@@ -65,7 +65,7 @@ Set initial state
 """
 
 simulator.x0['xh'] = 0
-simulator.x0['yh'] = 0.18
+simulator.x0['yh'] = 0.17
 simulator.x0['thh'] = 0
 simulator.x0['tha', 0] = 0
 simulator.x0['tha', 1] = 0
@@ -83,60 +83,63 @@ Setup graphic:
 """
 
 
-mpc_graphics = do_mpc.graphics.Graphics(mpc.data)
+# mpc_graphics = do_mpc.graphics.Graphics(mpc.data)
 
-fig = plt.figure(figsize=(16,9))
-plt.ion()
+# fig = plt.figure(figsize=(16,9))
+# plt.ion()
 
-ax1 = plt.subplot2grid((4, 2), (0, 0), rowspan=4)
-ax2 = plt.subplot2grid((4, 2), (0, 1))
-ax3 = plt.subplot2grid((4, 2), (1, 1))
-ax4 = plt.subplot2grid((4, 2), (2, 1))
-ax5 = plt.subplot2grid((4, 2), (3, 1))
+# ax1 = plt.subplot2grid((4, 2), (0, 0), rowspan=4)
+# ax2 = plt.subplot2grid((4, 2), (0, 1))
+# ax3 = plt.subplot2grid((4, 2), (1, 1))
+# ax4 = plt.subplot2grid((4, 2), (2, 1))
+# ax5 = plt.subplot2grid((4, 2), (3, 1))
 
-ax2.set_ylabel('hull center position')
-ax3.set_ylabel('leg angles')
-ax4.set_ylabel('velocity')
-ax5.set_ylabel('leg angular velocities')
+# ax2.set_ylabel('hull center position')
+# ax3.set_ylabel('leg angles')
+# ax4.set_ylabel('velocity')
+# ax5.set_ylabel('leg angular velocities')
 
-mpc_graphics.add_line(var_type='_x', var_name='xh', axis=ax2)
-mpc_graphics.add_line(var_type='_x', var_name='yh', axis=ax2)
-mpc_graphics.add_line(var_type='_x', var_name='tha', axis=ax3)
-mpc_graphics.add_line(var_type='_u', var_name='vel', axis=ax4)
-mpc_graphics.add_line(var_type='_u', var_name='dtha', axis=ax5)
+# mpc_graphics.add_line(var_type='_x', var_name='xh', axis=ax2)
+# mpc_graphics.add_line(var_type='_x', var_name='yh', axis=ax2)
+# mpc_graphics.add_line(var_type='_x', var_name='tha', axis=ax3)
+# mpc_graphics.add_line(var_type='_u', var_name='vel', axis=ax4)
+# mpc_graphics.add_line(var_type='_u', var_name='dtha', axis=ax5)
 
-ax1.axhline(0,color='black')
+# ax1.axhline(0,color='black')
 
-# Axis on the right.
-for ax in [ax2, ax3, ax4, ax5]:
-    ax.yaxis.set_label_position("right")
-    ax.yaxis.tick_right()
+# # Axis on the right.
+# for ax in [ax2, ax3, ax4, ax5]:
+#     ax.yaxis.set_label_position("right")
+#     ax.yaxis.tick_right()
 
-    if ax != ax5:
-        ax.xaxis.set_ticklabels([])
+#     if ax != ax5:
+#         ax.xaxis.set_ticklabels([])
 
-ax5.set_xlabel('time [s]')
+# ax5.set_xlabel('time [s]')
 
-bar1 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
-bar2 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
+# bar1 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
+# bar2 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
 
 
-# for obs in obstacles:
-#     circle = Circle((obs['x'], obs['y']), obs['r'])
-#     ax1.add_artist(circle)
+# # for obs in obstacles:
+# #     circle = Circle((obs['x'], obs['y']), obs['r'])
+# #     ax1.add_artist(circle)
 
-# ax1.set_xlim(-1.8,1.8)
-# ax1.set_ylim(-1.2,1.2)
-# ax1.set_axis_off()
+# # ax1.set_xlim(-1.8,1.8)
+# # ax1.set_ylim(-1.2,1.2)
+# # ax1.set_axis_off()
 
-fig.align_ylabels()
-fig.tight_layout()
+# fig.align_ylabels()
+# fig.tight_layout()
 
 
 """
 Run MPC main loop:
 """
 time_list = []
+
+x_list = []
+u_list = []
 
 n_steps = 250
 for k in range(n_steps):
@@ -149,15 +152,43 @@ for k in range(n_steps):
     time_list.append(toc-tic)
 
     print(x0)
+    print(u0)
+
+    x_list.append(x0)
+    u_list.append(u0)
 
 time_arr = np.array(time_list)
 mean = np.round(np.mean(time_arr[1:])*1000)
 var = np.round(np.std(time_arr[1:])*1000)
 print('mean runtime:{}ms +- {}ms for MPC step'.format(mean, var))
 
+t = np.arange(n_steps)*0.1
+xh = np.array(x_list)[:,0,0]
+yh = np.array(x_list)[:,1,0]
+thh = np.array(x_list)[:,2,0]
+tha_0 = np.array(x_list)[:,3,0]
+tha_1 = np.array(x_list)[:,4,0]
+tha_2 = np.array(x_list)[:,5,0]
+vel = np.array(u_list)[:,0,0]
+dtha_0 = np.array(u_list)[:,1,0]
+dtha_1 = np.array(u_list)[:,2,0]
+dtha_2 = np.array(u_list)[:,3,0]
+plt.subplot(2,2,1)
+plt.plot(t,xh,t,yh)
+plt.legend(['xh','yh'])
+plt.subplot(2,2,2)
+plt.plot(t,tha_0,t,tha_1,t,tha_2)
+plt.legend(['tha_0','tha_1','tha_2'])
+plt.subplot(2,2,3)
+plt.plot(t,vel)
+plt.legend('vel')
+plt.subplot(2,2,4)
+plt.plot(t,dtha_0,t,dtha_1,t,dtha_2)
+plt.legend(['dtha_0','dtha_1','dtha_2'])
+plt.show()
 
 # Store results:
-if store_results:
-    do_mpc.data.save_results([mpc, simulator], 'dip_mpc')
+# if store_results:
+#     do_mpc.data.save_results([mpc, simulator], 'dip_mpc')
 
 # input('Press any key to exit.')

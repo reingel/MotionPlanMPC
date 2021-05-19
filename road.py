@@ -86,11 +86,12 @@ class Road(object):
             x, y, lmr, up = c.location_wrt(edge)
             # if lmr == 0 and 0 < y < c.r: # middle, wheel center is in the ground (max = wheel radius)
                 # c.o += c.contact_vector_to_line(edge)
-            is_wheel_contact = logic_and(y > 0, y < c.r)
-            is_wheel_in_range = logic_and(lmr == 0, is_wheel_contact)
+            # is_wheel_contact = logic_and(y > 0, y < c.r)
+            # is_wheel_in_range = logic_and(lmr == 0, is_wheel_contact)
             vc = c.contact_vector_to_line(edge)
-            c.o.x += if_else(is_wheel_in_range, vc.x, 0)
-            c.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            # c.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            # c.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            c.o += vc
         for i in range(self.nEdges - 1):
             e1 = self.edges[i]
             e2 = self.edges[i+1]
@@ -99,13 +100,14 @@ class Road(object):
             d = abs(c.o - e2.p1)
             # if lmr1 == 1 and ud1 >= 0 and lmr2 == -1 and ud2 >= 0 and d < c.r: # wheel center is between and above two ground segment
             #     c.o += c.contact_vector_to_point(e2.p1)
-            is_wheel_in_right_of_seg1 = logic_and(lmr1 == 1, ud1 >= 0)
-            is_wheel_in_left_of_seg2 = logic_and(lmr2 == -1, ud2 >= 0)
-            is_wheel_in_side = logic_and(is_wheel_in_right_of_seg1, is_wheel_in_left_of_seg2)
-            is_wheel_in_range = logic_and(is_wheel_in_side, d < c.r)
+            # is_wheel_in_right_of_seg1 = logic_and(lmr1 == 1, ud1 >= 0)
+            # is_wheel_in_left_of_seg2 = logic_and(lmr2 == -1, ud2 >= 0)
+            # is_wheel_in_side = logic_and(is_wheel_in_right_of_seg1, is_wheel_in_left_of_seg2)
+            # is_wheel_in_range = logic_and(is_wheel_in_side, d < c.r)
             vc = c.contact_vector_to_point(e2.p1)
-            c.o.x += if_else(is_wheel_in_range, vc.x, 0)
-            c.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            # c.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            # c.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            c.o += vc
 
         return c.o - c0.o
 
