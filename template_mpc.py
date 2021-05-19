@@ -38,10 +38,10 @@ def template_mpc(model):
     mpc = do_mpc.controller.MPC(model)
 
     setup_mpc = {
-        'n_horizon': 100,
+        'n_horizon': 20,
         'n_robust': 0,
         'open_loop': 0,
-        't_step': 0.04,
+        't_step': 0.1,
         'state_discretization': 'collocation',
         'collocation_type': 'radau',
         'collocation_deg': 3,
@@ -56,41 +56,50 @@ def template_mpc(model):
     # mterm = 100*(model.aux['E_kin'] - model.aux['E_pot'])
     # lterm = (model.aux['E_kin'] - model.aux['E_pot'])+10*(model.x['pos']-model.tvp['pos_set'])**2 # stage cost
 
-    mterm = model.aux['E_kin'] - model.aux['E_pot']
-    lterm = -model.aux['E_pot']+10*(model.x['pos']-model.tvp['pos_set'])**2 # stage cost
+    # mterm = model.aux['E_kin'] - model.aux['E_pot']
+    # lterm = -model.aux['E_pot']+10*(model.x['pos']-model.tvp['pos_set'])**2 # stage cost
+
+    mterm = -model.x['xh']
+    lterm = model.u['dtha',0]**2 + model.u['dtha',1]**2 + model.u['dtha',2]**2
 
 
     mpc.set_objective(mterm=mterm, lterm=lterm)
-    mpc.set_rterm(force=0.1)
+    mpc.set_rterm(dtha=0.1)
 
 
-    mpc.bounds['lower','_u','force'] = -4
-    mpc.bounds['upper','_u','force'] = 4
+    mpc.bounds['lower','_u','vel'] = -0.1
+    mpc.bounds['upper','_u','vel'] = 0.1
+    mpc.bounds['lower','_u','dtha',0] = -0.1
+    mpc.bounds['upper','_u','dtha',0] = 0.1
+    mpc.bounds['lower','_u','dtha',1] = -0.1
+    mpc.bounds['upper','_u','dtha',1] = 0.1
+    mpc.bounds['lower','_u','dtha',2] = -0.1
+    mpc.bounds['upper','_u','dtha',2] = 0.1
 
     # Avoid the obstacles:
-    mpc.set_nl_cons('obstacles', -model.aux['obstacle_distance'], 0)
+    # mpc.set_nl_cons('obstacles', -model.aux['obstacle_distance'], 0)
 
     # Values for the masses (for robust MPC)
-    m1_var = 0.2*np.array([1, 0.95, 1.05])
-    m2_var = 0.2*np.array([1, 0.95, 1.05])
-    mpc.set_uncertainty_values(m1=m1_var, m2=m2_var)
+    # m1_var = 0.2*np.array([1, 0.95, 1.05])
+    # m2_var = 0.2*np.array([1, 0.95, 1.05])
+    # mpc.set_uncertainty_values(m1=m1_var, m2=m2_var)
 
 
-    tvp_template = mpc.get_tvp_template()
+    # tvp_template = mpc.get_tvp_template()
 
     # When to switch setpoint:
-    t_switch = 4    # seconds
-    ind_switch = t_switch // setup_mpc['t_step']
+    # t_switch = 4    # seconds
+    # ind_switch = t_switch // setup_mpc['t_step']
 
-    def tvp_fun(t_ind):
-        ind = t_ind // setup_mpc['t_step']
-        if ind <= ind_switch:
-            tvp_template['_tvp',:, 'pos_set'] = -0.8
-        else:
-            tvp_template['_tvp',:, 'pos_set'] = 0.8
-        return tvp_template
+    # def tvp_fun(t_ind):
+    #     ind = t_ind // setup_mpc['t_step']
+    #     if ind <= ind_switch:
+    #         tvp_template['_tvp',:, 'pos_set'] = -0.8
+    #     else:
+    #         tvp_template['_tvp',:, 'pos_set'] = 0.8
+    #     return tvp_template
 
-    mpc.set_tvp_fun(tvp_fun)
+    # mpc.set_tvp_fun(tvp_fun)
 
     mpc.setup()
 

@@ -1,18 +1,12 @@
+from Vector2D import Vector2D
 import numpy as np
+from copy import copy, deepcopy
 from math import sin, cos, asin, acos, sqrt
 from phyunits import *
+from Geometry import Point2D, Line2D, Circle
+from casadi import *
 
-
-class Point:
-    def __init__(self, x, z):
-        self.x = x
-        self.z = z
-
-class WheelPosition:
-    def __init__(self, x, z, r):
-        self.x = x
-        self.z = z
-        self.r = r
+Wheel = Circle
 
 class HullSurface:
     def __init__(self, p1, p2):
@@ -48,96 +42,81 @@ class HullPose:
         su = HullSurface(fu, ru)
         return sr, sb, sf, su
 
-def two_points_distance(p1, p2):
-    return sqrt((p2.x - p1.x)**2 + (p2.z - p1.z)**2)
-
-def three_points2pos_ang_section(p1, p2, p3):
-    x1, z1 = p1.x, p1.z
-    x2, z2 = p2.x, p2.z
-    x3, z3 = p3.x, p3.z
-    v1 = np.array([x1 - x2, z1 - z2])
-    v2 = np.array([x3 - x2, z3 - z2])
-    v1_norm = np.linalg.norm(v1)
-    v2_norm = np.linalg.norm(v2)
-    v1_hat = v1 / v1_norm
-    v2_hat = v2 / v2_norm
-    th_dot = acos(np.dot(v2_hat, v1_hat))
-    th_cross = asin(np.cross(v2_hat, v1_hat))
-    th = th_dot * np.sign(th_cross)
-    x = v1_norm * cos(th)
-    z = v1_norm * sin(th)
-    section = np.floor(x / v1_norm) + (3 if z < 0 else 0)
-    return x, z, th, section
-
-class Node:
-    def __init__(self, x, z):
-        self.x = x
-        self.z = z
-
-class Segment:
-    def __init__(self, node_id1, node_id2):
-        self.node_id1 = node_id1
-        self.node_id2 = node_id2
-
-class Road:
+class Road(object):
     def __init__(self):
         self.nodes = []
-        self.segs = []
+        self.edges = []
+        self.nNodes = 0
+        self.nEdges = 0
     
     def add_node(self, x, z):
-        self.nodes.append(Node(x, z))
+        self.nodes.append(Point2D(x, z))
+        self.nNodes += 1
     
-    def add_segment(self, p1, p2):
-        self.segs.append(Segment(p1, p2))
+    def add_segment(self, i1: int, i2: int):
+        p1 = self.nodes[i1]
+        p2 = self.nodes[i2]
+        self.edges.append(Line2D(p1, p2))
+        self.nEdges += 1
 
     def auto_connect(self):
-        n = len(self.nodes)
+        n = self.nNodes
         assert n >= 2
         for i in range(n-1):
             self.add_segment(i, i+1)
     
-    def normal_vectors(self, i=None):
-        nseg = len(self.segs)
-        assert nseg > 0
+    def is_empty(self):
+        return True if self.nEdges == 0 else False
+    
+    def normal_vectors(self):
+        if self.is_empty():
+            return None
         normals = []
-        for seg in self.segs:
-            node1 = self.nodes[seg.node_id1]
-            node2 = self.nodes[seg.node_id2]
-            v = np.array([node2.x - node1.x, node2.z - node1.z])
-            v = v / np.linalg.norm(v)
-            n = np.array([-v[1], v[0]])
-            normals.append(n)
+        for edge in self.edges:
+            normals.append(edge.normal_vector())
         return normals
 
-    def distance_vectors_with_circle(self, pw):
-        nseg = len(self.segs)
-        assert nseg > 0
-        distances = []
-        for seg in self.segs:
-            node1 = self.nodes[seg.node_id1]
-            node2 = self.nodes[seg.node_id2]
-            x, z, th, section = three_points2pos_ang_section(pw, node1, node2)
-            d = z -pw.r
-            distances.append((d,section))
-        return np.array(distances)
+    def repulse_vector_of_wheel(self, c: Wheel):
+        if not isinstance(c, Wheel):
+            raise TypeError('can only take Wheel')
+        if self.is_empty():
+            return None
+        c0 = copy(c)
+        for edge in self.edges:
+            x, y, lmr, up = c.location_wrt(edge)
+            # if lmr == 0 and 0 < y < c.r: # middle, wheel center is in the ground (max = wheel radius)
+                # c.o += c.contact_vector_to_line(edge)
+            is_wheel_contact = logic_and(y > 0, y < c.r)
+            is_wheel_in_range = logic_and(lmr == 0, is_wheel_contact)
+            vc = c.contact_vector_to_line(edge)
+            c.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            c.o.y += if_else(is_wheel_in_range, vc.y, 0)
+        for i in range(self.nEdges - 1):
+            e1 = self.edges[i]
+            e2 = self.edges[i+1]
+            _, _, lmr1, ud1 = c.location_wrt(e1)
+            x, y, lmr2, ud2 = c.location_wrt(e2)
+            d = abs(c.o - e2.p1)
+            # if lmr1 == 1 and ud1 >= 0 and lmr2 == -1 and ud2 >= 0 and d < c.r: # wheel center is between and above two ground segment
+            #     c.o += c.contact_vector_to_point(e2.p1)
+            is_wheel_in_right_of_seg1 = logic_and(lmr1 == 1, ud1 >= 0)
+            is_wheel_in_left_of_seg2 = logic_and(lmr2 == -1, ud2 >= 0)
+            is_wheel_in_side = logic_and(is_wheel_in_right_of_seg1, is_wheel_in_left_of_seg2)
+            is_wheel_in_range = logic_and(is_wheel_in_side, d < c.r)
+            vc = c.contact_vector_to_point(e2.p1)
+            c.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            c.o.y += if_else(is_wheel_in_range, vc.y, 0)
 
-    def repulse_vector_of_circle(self, pw):
-        normals = self.normal_vectors()
-        distances = self.distance_vectors_with_circle(pw)
-        vector = np.zeros(2)
-        for i, (dist, section) in enumerate(distances):
-            if (section == 0 or section == 3) and (-pw.r < dist < 0):
-                vector += -dist * normals[i]
-        return vector
+        return c.o - c0.o
 
     def get_hull_distances(self, ph):
-        nseg = len(self.segs)
-        assert nseg > 0
+        if self.is_empty():
+            return None
         hull_surfaces = ph.surfaces()
         distances = []
-        for seg in self.segs:
-            node1 = self.nodes[seg.node_id1]
-            node2 = self.nodes[seg.node_id2]
+        for edge in self.edges:
+            node1 = self.nodes[edge.node_id1]
+            node2 = self.nodes[edge.node_id2]
             vec_seg = np.array([node2.x - node1.x, node2.z - node1.z])
             lseg = two_points_distance(node1, node2)
             for surf in hull_surfaces:
@@ -165,3 +144,35 @@ class Road:
             if dist > -ph.H:
                 d_min = min(d_min, dist)
         return d_min
+
+if __name__ == '__main__':
+    from Geometry import Point2D, Line2D, Circle
+    Wheel = Circle
+
+    road = Road()
+    road.add_node(-10, 0)
+    road.add_node(1, 0)
+    road.add_node(1, 0.1)
+    road.add_node(2, 0.1)
+    road.add_node(2, 0)
+    road.add_node(10, 0)
+    road.auto_connect()
+
+    c = Wheel(Point2D(2.01, 0.101), 0.06)
+
+    # print(road.normal_vectors())
+    print(road.repulse_vector_of_wheel(c))
+    
+
+    # ph = HullPose(0, 0.1, 10*deg, 0.2, 0.06)
+
+    # w_distances = road.distance_vectors_with_circle(pw)
+    # w_d_min = road.repulse_vector_of_circle(pw)
+
+    # h_distances = road.get_hull_distances(ph)
+    # h_d_min = road.get_hull_min_distance(ph)
+
+    # print(np.round(w_distances, 4))
+    # print(np.round(w_d_min, 4))
+    # print(np.round(h_distances, 4))
+    # print(np.round(h_d_min, 4))

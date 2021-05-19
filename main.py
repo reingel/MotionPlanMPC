@@ -27,8 +27,8 @@ from template_mpc import template_mpc
 from template_simulator import template_simulator
 from template_model import template_model
 
-from road_profile import *
 from phyunits import *
+from road import Road, Wheel
 
 """ User settings: """
 show_animation = True
@@ -36,7 +36,7 @@ store_animation = False
 store_results = False
 
 # Define obstacles to avoid
-road = Road(rw=0.06)
+road = Road()
 road.add_node(-10, 0)
 road.add_node(1, 0)
 road.add_node(1, 0.1)
@@ -64,14 +64,12 @@ estimator = do_mpc.estimator.StateFeedback(model)
 Set initial state
 """
 
-if scenario == 1:
-    simulator.x0['theta'] = np.pi
-    simulator.x0['pos'] = 0
-elif scenario == 2:
-    simulator.x0['theta'] = 0.
-    simulator.x0['pos'] = 0.8
-else:
-    raise Exception('Scenario not defined.')
+simulator.x0['xh'] = 0
+simulator.x0['yh'] = 0.18
+simulator.x0['thh'] = 0
+simulator.x0['tha', 0] = 0
+simulator.x0['tha', 1] = 0
+simulator.x0['tha', 2] = 0
 
 x0 = simulator.x0.cat.full()
 
@@ -84,36 +82,6 @@ mpc.set_initial_guess()
 Setup graphic:
 """
 
-# Function to create lines:
-L1 = 0.5  #m, length of the first rod
-L2 = 0.5  #m, length of the second rod
-def pendulum_bars(x):
-    x = x.flatten()
-    # Get the x,y coordinates of the two bars for the given state x.
-    line_1_x = np.array([
-        x[0],
-        x[0]+L1*np.sin(x[1])
-    ])
-
-    line_1_y = np.array([
-        0,
-        L1*np.cos(x[1])
-    ])
-
-    line_2_x = np.array([
-        line_1_x[1],
-        line_1_x[1] + L2*np.sin(x[2])
-    ])
-
-    line_2_y = np.array([
-        line_1_y[1],
-        line_1_y[1] + L2*np.cos(x[2])
-    ])
-
-    line_1 = np.stack((line_1_x, line_1_y))
-    line_2 = np.stack((line_2_x, line_2_y))
-
-    return line_1, line_2
 
 mpc_graphics = do_mpc.graphics.Graphics(mpc.data)
 
@@ -126,16 +94,16 @@ ax3 = plt.subplot2grid((4, 2), (1, 1))
 ax4 = plt.subplot2grid((4, 2), (2, 1))
 ax5 = plt.subplot2grid((4, 2), (3, 1))
 
-ax2.set_ylabel('$E_{kin}$ [J]')
-ax3.set_ylabel('$E_{pot}$ [J]')
-ax4.set_ylabel('position  [m]')
-ax5.set_ylabel('Input force [N]')
+ax2.set_ylabel('hull center position')
+ax3.set_ylabel('leg angles')
+ax4.set_ylabel('velocity')
+ax5.set_ylabel('leg angular velocities')
 
-mpc_graphics.add_line(var_type='_aux', var_name='E_kin', axis=ax2)
-mpc_graphics.add_line(var_type='_aux', var_name='E_pot', axis=ax3)
-mpc_graphics.add_line(var_type='_x', var_name='pos', axis=ax4)
-mpc_graphics.add_line(var_type='_tvp', var_name='pos_set', axis=ax4)
-mpc_graphics.add_line(var_type='_u', var_name='force', axis=ax5)
+mpc_graphics.add_line(var_type='_x', var_name='xh', axis=ax2)
+mpc_graphics.add_line(var_type='_x', var_name='yh', axis=ax2)
+mpc_graphics.add_line(var_type='_x', var_name='tha', axis=ax3)
+mpc_graphics.add_line(var_type='_u', var_name='vel', axis=ax4)
+mpc_graphics.add_line(var_type='_u', var_name='dtha', axis=ax5)
 
 ax1.axhline(0,color='black')
 
@@ -153,13 +121,13 @@ bar1 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
 bar2 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
 
 
-for obs in obstacles:
-    circle = Circle((obs['x'], obs['y']), obs['r'])
-    ax1.add_artist(circle)
+# for obs in obstacles:
+#     circle = Circle((obs['x'], obs['y']), obs['r'])
+#     ax1.add_artist(circle)
 
-ax1.set_xlim(-1.8,1.8)
-ax1.set_ylim(-1.2,1.2)
-ax1.set_axis_off()
+# ax1.set_xlim(-1.8,1.8)
+# ax1.set_ylim(-1.2,1.2)
+# ax1.set_axis_off()
 
 fig.align_ylabels()
 fig.tight_layout()
@@ -170,7 +138,7 @@ Run MPC main loop:
 """
 time_list = []
 
-n_steps = 240
+n_steps = 250
 for k in range(n_steps):
     tic = time.time()
     u0 = mpc.make_step(x0)
@@ -180,16 +148,7 @@ for k in range(n_steps):
 
     time_list.append(toc-tic)
 
-
-    if show_animation:
-        line1, line2 = pendulum_bars(x0)
-        bar1[0].set_data(line1[0],line1[1])
-        bar2[0].set_data(line2[0],line2[1])
-        mpc_graphics.plot_results()
-        mpc_graphics.plot_predictions()
-        mpc_graphics.reset_axes()
-        plt.show()
-        plt.pause(0.04)
+    print(x0)
 
 time_arr = np.array(time_list)
 mean = np.round(np.mean(time_arr[1:])*1000)
@@ -197,24 +156,8 @@ var = np.round(np.std(time_arr[1:])*1000)
 print('mean runtime:{}ms +- {}ms for MPC step'.format(mean, var))
 
 
-# The function describing the gif:
-if store_animation:
-    x_arr = mpc.data['_x']
-    def update(t_ind):
-        line1, line2 = pendulum_bars(x_arr[t_ind])
-        bar1[0].set_data(line1[0],line1[1])
-        bar2[0].set_data(line2[0],line2[1])
-        mpc_graphics.plot_results(t_ind)
-        mpc_graphics.plot_predictions(t_ind)
-        mpc_graphics.reset_axes()
-
-    anim = FuncAnimation(fig, update, frames=n_steps, repeat=False)
-    gif_writer = ImageMagickWriter(fps=20)
-    anim.save('anim_dip.gif', writer=gif_writer)
-
-
 # Store results:
 if store_results:
     do_mpc.data.save_results([mpc, simulator], 'dip_mpc')
 
-input('Press any key to exit.')
+# input('Press any key to exit.')
