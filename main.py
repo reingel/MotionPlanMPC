@@ -1,41 +1,22 @@
+# Car race along a track
+# ----------------------
+# An optimal control problem (OCP),
+# solved with direct multiple-shooting.
+#
+# For more information see: http://labs.casadi.org/OCP
+
+from pylab import plot, subplot, step, figure, legend, show, spy
 import numpy as np
-import matplotlib.pyplot as plt
 from casadi import *
-from casadi.tools import *
-import pdb
-import sys
-# sys.path.append('../../')
-import do_mpc
 
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from matplotlib.patches import Circle
-from matplotlib import rcParams
-from matplotlib.animation import FuncAnimation, FFMpegWriter, ImageMagickWriter
-# Plot settings
-rcParams['text.usetex'] = False
-rcParams['axes.grid'] = True
-rcParams['lines.linewidth'] = 2.0
-rcParams['axes.labelsize'] = 'xx-large'
-rcParams['xtick.labelsize'] = 'xx-large'
-rcParams['ytick.labelsize'] = 'xx-large'
+from road import Road
+from robot import Robot
 
 
-import time
+N = 100  # number of control intervals
+nx = 6
+nu = 4
 
-from template_mpc import template_mpc
-from template_simulator import template_simulator
-from template_model import template_model
-
-from phyunits import *
-from road import Road, Wheel
-
-""" User settings: """
-show_animation = True
-store_animation = False
-store_results = False
-
-# Define obstacles to avoid
 road = Road()
 road.add_node(-10, 0)
 road.add_node(1, 0)
@@ -45,150 +26,106 @@ road.add_node(2, 0)
 road.add_node(10, 0)
 road.auto_connect()
 
+robot = Robot(0, 0.18, 0, np.zeros(3))
 
-# ------------------
+opti = Opti()  # Optimization problem
 
+# ---- decision variables ---------
+X = opti.variable(nx, N+1)  # state trajectory
+xh = X[0, :]
+yh = X[1, :]
+thh = X[2, :]
+tha1 = X[3, :]
+tha2 = X[4, :]
+tha3 = X[5, :]
 
-scenario = 1  # 1 = down-down start, 2 = up-up start, both with setpoint change.
+U = opti.variable(nu, N)   # control trajectory (throttle)
+vel = U[0, :]
+dtha1 = U[1,:]
+dtha2 = U[2,:]
+dtha3 = U[3,:]
 
-"""
-Get configured do-mpc modules:
-"""
+T = opti.variable()      # final time
+dt = T/N  # length of a control interval
 
-model = template_model(road)
-simulator = template_simulator(model)
-mpc = template_mpc(model)
-estimator = do_mpc.estimator.StateFeedback(model)
-
-"""
-Set initial state
-"""
-
-simulator.x0['xh'] = 0
-simulator.x0['yh'] = 0.17
-simulator.x0['thh'] = 0
-simulator.x0['tha', 0] = 0
-simulator.x0['tha', 1] = 0
-simulator.x0['tha', 2] = 0
-
-x0 = simulator.x0.cat.full()
-
-mpc.x0 = x0
-estimator.x0 = x0
-
-mpc.set_initial_guess()
-
-"""
-Setup graphic:
-"""
+# ---- objective          ---------
+opti.minimize(T)  # race in minimal time
 
 
-# mpc_graphics = do_mpc.graphics.Graphics(mpc.data)
-
-# fig = plt.figure(figsize=(16,9))
-# plt.ion()
-
-# ax1 = plt.subplot2grid((4, 2), (0, 0), rowspan=4)
-# ax2 = plt.subplot2grid((4, 2), (0, 1))
-# ax3 = plt.subplot2grid((4, 2), (1, 1))
-# ax4 = plt.subplot2grid((4, 2), (2, 1))
-# ax5 = plt.subplot2grid((4, 2), (3, 1))
-
-# ax2.set_ylabel('hull center position')
-# ax3.set_ylabel('leg angles')
-# ax4.set_ylabel('velocity')
-# ax5.set_ylabel('leg angular velocities')
-
-# mpc_graphics.add_line(var_type='_x', var_name='xh', axis=ax2)
-# mpc_graphics.add_line(var_type='_x', var_name='yh', axis=ax2)
-# mpc_graphics.add_line(var_type='_x', var_name='tha', axis=ax3)
-# mpc_graphics.add_line(var_type='_u', var_name='vel', axis=ax4)
-# mpc_graphics.add_line(var_type='_u', var_name='dtha', axis=ax5)
-
-# ax1.axhline(0,color='black')
-
-# # Axis on the right.
-# for ax in [ax2, ax3, ax4, ax5]:
-#     ax.yaxis.set_label_position("right")
-#     ax.yaxis.tick_right()
-
-#     if ax != ax5:
-#         ax.xaxis.set_ticklabels([])
-
-# ax5.set_xlabel('time [s]')
-
-# bar1 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
-# bar2 = ax1.plot([],[], '-o', linewidth=5, markersize=10)
+# ---- dynamic constraints --------
+# f = lambda x,u: vertcat(x[1],u-x[1]) # dx/dt = f(x,u)
+def f(x, u):
+    xh = x[0]
+    yh = x[1]
+    thh = x[2]
+    tha = vertcat(x[3], x[4], x[5])
+    vel = u[0]
+    dtha = vertcat(u[1], u[2], u[3])
+    xh1, yh1, thh1, tha1 = robot.step(xh, yh, thh, tha, vel, dtha, dt, road)
+    dx1 = xh1
+    dx2 = yh1
+    dx3 = thh1
+    dx4 = tha1[0]
+    dx5 = tha1[1]
+    dx6 = tha1[2]
+    return vertcat(dx1, dx2, dx3, dx4, dx5, dx6)
 
 
-# # for obs in obstacles:
-# #     circle = Circle((obs['x'], obs['y']), obs['r'])
-# #     ax1.add_artist(circle)
+for k in range(N):  # loop over control intervals
+    # Runge-Kutta 4 integration
+    # k1 = f(X[:, k],         U[:, k])
+    # k2 = f(X[:, k]+dt/2*k1, U[:, k])
+    # k3 = f(X[:, k]+dt/2*k2, U[:, k])
+    # k4 = f(X[:, k]+dt*k3,   U[:, k])
+    # x_next = X[:, k] + dt/6*(k1+2*k2+2*k3+k4)
+    x_next = f(X[:,k], U[:,k])
+    opti.subject_to(X[:, k+1] == x_next)  # close the gaps
 
-# # ax1.set_xlim(-1.8,1.8)
-# # ax1.set_ylim(-1.2,1.2)
-# # ax1.set_axis_off()
-
-# fig.align_ylabels()
-# fig.tight_layout()
+# ---- path constraints -----------
 
 
-"""
-Run MPC main loop:
-"""
-time_list = []
+# opti.subject_to(speed <= limit(pos))   # track speed limit
 
-x_list = []
-u_list = []
+opti.subject_to(opti.bounded(-0.1, U, 0.1))  # control is limited
 
-n_steps = 250
-for k in range(n_steps):
-    tic = time.time()
-    u0 = mpc.make_step(x0)
-    toc = time.time()
-    y_next = simulator.make_step(u0)
-    x0 = estimator.make_step(y_next)
+# ---- boundary conditions --------
+opti.subject_to(xh[0] == 0)
+opti.subject_to(xh[-1] == 1.5)
+opti.subject_to(yh[0] == 0.18)
+opti.subject_to(yh[-1] == 0.18)
+opti.subject_to(thh[0] == 0)
+opti.subject_to(thh[-1] == 0)
 
-    time_list.append(toc-tic)
+# ---- misc. constraints  ----------
+opti.subject_to(T >= 0)  # Time must be positive
 
-    print(x0)
-    print(u0)
+# ---- initial values for solver ---
+opti.set_initial(T, 1)
 
-    x_list.append(x0)
-    u_list.append(u0)
+# ---- solve NLP              ------
+opti.solver("ipopt")  # set numerical backend
+sol = opti.solve()   # actual solve
 
-time_arr = np.array(time_list)
-mean = np.round(np.mean(time_arr[1:])*1000)
-var = np.round(np.std(time_arr[1:])*1000)
-print('mean runtime:{}ms +- {}ms for MPC step'.format(mean, var))
+# ---- post-processing        ------
+t = np.arange(N+1)
 
-t = np.arange(n_steps)*0.1
-xh = np.array(x_list)[:,0,0]
-yh = np.array(x_list)[:,1,0]
-thh = np.array(x_list)[:,2,0]
-tha_0 = np.array(x_list)[:,3,0]
-tha_1 = np.array(x_list)[:,4,0]
-tha_2 = np.array(x_list)[:,5,0]
-vel = np.array(u_list)[:,0,0]
-dtha_0 = np.array(u_list)[:,1,0]
-dtha_1 = np.array(u_list)[:,2,0]
-dtha_2 = np.array(u_list)[:,3,0]
-plt.subplot(2,2,1)
-plt.plot(t,xh,t,yh)
-plt.legend(['xh','yh'])
-plt.subplot(2,2,2)
-plt.plot(t,tha_0,t,tha_1,t,tha_2)
-plt.legend(['tha_0','tha_1','tha_2'])
-plt.subplot(2,2,3)
-plt.plot(t,vel)
-plt.legend('vel')
-plt.subplot(2,2,4)
-plt.plot(t,dtha_0,t,dtha_1,t,dtha_2)
-plt.legend(['dtha_0','dtha_1','dtha_2'])
-plt.show()
+figure(1)
+subplot(221)
+plot(t,sol.value(xh),t,sol.value(yh))
+legend('xh','yh')
+subplot(222)
+plot(t,sol.value(tha1),t,sol.value(tha2),t,sol.value(tha3))
+legend('tha1','tha2','tha3')
+subplot(223)
+plot(t,sol.value(vel))
+legend('vel')
+subplot(224)
+plot(t,sol.value(dtha1),t,sol.value(dtha2),t,sol.value(dtha3))
+legend('dtha1','dtha2','dtha3')
 
-# Store results:
-# if store_results:
-#     do_mpc.data.save_results([mpc, simulator], 'dip_mpc')
+# figure()
+# spy(sol.value(jacobian(opti.g, opti.x)))
+# figure()
+# spy(sol.value(hessian(opti.f+dot(opti.lam_g, opti.g), opti.x)[0]))
 
-# input('Press any key to exit.')
+show()
