@@ -16,38 +16,60 @@ class Robot(object):
     Hs = -4*cm # shoulder gap z from hull CG
     La =  8*cm # arm length
     Rw =  6*cm # wheel radius
+    mh = 1.5
+    mw = 0.2
+    Ih = 1
+    Iw = 0.2
 
     def __init__(self, xh, yh, thh, tha):
         assert len(tha) == 3
-        self.ph = Point2D(xh, yh)
-        self.thh = thh
-        self.tha = tha
+        self.q = np.array([xh, yh, thh, tha[0], tha[1], tha[2], 0, 0, 0])
+        self.dq = np.zeros(9)
     
     def hull(self):
         return Box(self.ph, Robot.Lh, Robot.Hh)
 
     def wheel(self, i):
         assert 0 <= i <= 2
-        pw = self.ph + Point2D(Robot.Ls[i], Robot.Hs) + Robot.La*Point2D(-np.sin(self.tha[i]), -np.cos(self.tha[i]))
-        return Wheel(pw, Robot.Rw)
-    
-    def repulse_vector_by_wheels_(self, road):
-        ph0 = copy(self.ph)
-        for i in range(self.nLeg):
-            w = self.wheel(i)
-            vr = road.repulse_vector_of_wheel(w)
-            self.ph += vr
-        return self.ph - ph0
+        xh = self.q[0]
+        yh = self.q[1]
+        thh = self.q[2]
+        thai = self.q[2] + self.q[i+3]
+        ph = Point2D(xh, yh)
+        phs = Point2D(Robot.Ls[i], Robot.Hs).rotate(-thh)
+        psw = Point2D(0,-Robot.La).rotate(-thai)
+        pw = ph + phs + psw
 
-    def step(self, xh, yh, thh, tha, vel, dtha, dt, road):
-        self.ph = Point2D(
-            xh + vel*dt,
-            yh,
-        )
-        self.thh = thh
-        self.tha = tha + dtha*dt
-        self.repulse_vector_by_wheels_(road)
-        return self.ph.x, self.ph.y, self.thh, self.tha
+        dxh = self.dq[0]
+        dyh = self.dq[1]
+        dthh = self.dq[2]
+        dthai = self.dq[2] + self.dq[i+3]
+        vh = Point2D(dxh, dyh)
+        vhs = phs.rotate90() * -dthh
+        vsw = psw.rotate90() * -dthai
+        vw = vh + vhs + vsw
+
+        dthw = self.dq[i+6]
+
+        return Wheel(pw, Robot.Rw), vw, -dthw
+    
+    def wheel_forces(self, road):
+        forces = []
+        for i in range(self.nLeg):
+            wheel, vw, dthw = self.wheel(i)
+            forces.extend(road.wheel_forces(wheel, vw, dthw))
+        return forces
+    
+    def sum_wheel_forces(self, road):
+        forces = self.wheel_forces(road)
+        Fx = 0
+        Fy = 0
+        Mz = 0
+        for r, force in forces:
+            Fx += force.x
+            Fy += force.y
+            Mz += r.cross(force)
+        return Fx, Fy, Mz
     
     def distance_to_road(self, xh, yh, thh, tha, vel, dtha, dt, road):
         self.ph = Point2D(
@@ -70,15 +92,7 @@ if __name__ == '__main__':
     road.add_node(10, 0)
     road.auto_connect()
 
-    robot = Robot(-0.16-0.06 + 0.01, 0.18, 0, np.zeros(3))
-    print(robot.hull())
-    for i in range(robot.nLeg):
-        print(robot.wheel(i))
-    print(robot.repulse_vector_by_wheels_(road))
-
-    x0 = [0, 0.18, 0, np.zeros(3)]
-    u = [0.1, np.array([0.1, 0, 0])]
-    dt = 0.1
-    print(x0)
-    xh1, yh1, thh1, tha1 = robot.step(*x0, *u, dt, road)
-    print(xh1, yh1, thh1, tha1)
+    robot = Robot(1-0.16-0.06+0.01, 0.17, 0, np.zeros(3))
+    robot.dq[8] = 1
+    print(robot.wheel_forces(road))
+    print(robot.sum_wheel_forces(road))

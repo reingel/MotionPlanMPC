@@ -75,41 +75,80 @@ class Road(object):
         for edge in self.edges:
             normals.append(edge.normal_vector())
         return normals
+    
+    def spring_force(self, deflection):
+        fN0 = 0.1
+        fN_hat = 1000
+        gN_hat = 0.1
+        return fN0 * (fN_hat / fN0)**(deflection / gN_hat)
+    
+    def friction_coef(self, slip_rate):
+        v_hat = 0.01
+        return np.tanh(slip_rate / v_hat)
 
-    def repulse_vector_of_wheel(self, c: Wheel):
-        if not isinstance(c, Wheel):
+    def wheel_forces(self, wheel: Wheel, vw, dthw):
+        if not isinstance(wheel, Wheel):
             raise TypeError('can only take Wheel')
         if self.is_empty():
             return None
-        c0 = copy(c)
+        forces = []
         for edge in self.edges:
-            x, y, lmr, up = c.location_wrt(edge)
-            # if lmr == 0 and 0 < y < c.r: # middle, wheel center is in the ground (max = wheel radius)
-                # c.o += c.contact_vector_to_line(edge)
-            # is_wheel_contact = logic_and(y > 0, y < c.r)
-            # is_wheel_in_range = logic_and(lmr == 0, is_wheel_contact)
-            vc = c.contact_vector_to_line(edge)
-            # c.o.x += if_else(is_wheel_in_range, vc.x, 0)
-            # c.o.y += if_else(is_wheel_in_range, vc.y, 0)
-            c.o += vc
+            x, y, lmr, _ = wheel.location_wrt(edge)
+            if lmr == 0 and 0 < y < wheel.r: # middle, wheel center is in the ground (max = wheel radius)
+                t = edge.tangent_vector()
+                n = edge.normal_vector()
+                pc = edge.p1 + x * t # contact point
+                vc = vw.dot(t) + abs(pc - wheel.o) * dthw # slip rate
+                wheel_deflection = wheel.r - y
+                fn = self.spring_force(wheel_deflection)
+                fs = fn * n
+                ff = self.friction_coef(-vc) * fn * t
+                f = fs + ff
+                forces.append((pc, f))
+            is_wheel_contact = logic_and(y > 0, y < wheel.r) # TODO
+            is_wheel_in_range = logic_and(lmr == 0, is_wheel_contact)
+            t = edge.tangent_vector()
+            n = edge.normal_vector()
+            pc = edge.p1 + x * t # contact point
+            vc = vw.dot(t) + abs(pc - wheel.o) * dthw # slip rate
+            wheel_deflection = wheel.r - y
+            fn = self.spring_force(wheel_deflection)
+            fs = fn * n
+            ff = self.friction_coef(-vc) * fn * t
+            f = fs + ff
+            wheel.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            wheel.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            wheel.o += vc
+            forces.append((pc, f))
         for i in range(self.nEdges - 1):
             e1 = self.edges[i]
             e2 = self.edges[i+1]
-            _, _, lmr1, ud1 = c.location_wrt(e1)
-            x, y, lmr2, ud2 = c.location_wrt(e2)
-            d = abs(c.o - e2.p1)
-            # if lmr1 == 1 and ud1 >= 0 and lmr2 == -1 and ud2 >= 0 and d < c.r: # wheel center is between and above two ground segment
-            #     c.o += c.contact_vector_to_point(e2.p1)
+            _, _, lmr1, ud1 = wheel.location_wrt(e1)
+            _, y, lmr2, ud2 = wheel.location_wrt(e2)
+            corner = e2.p1
+            c2o = wheel.o - corner
+            d0 = abs(c2o)
+            if lmr1 == 1 and ud1 >= 0 and lmr2 == -1 and ud2 >= 0 and 0 < d0 < wheel.r: # wheel center is between and above two ground segment
+                n = c2o.unit()
+                t = -n.rotate90()
+                pc = corner # contact point
+                vc = vw.dot(t) + abs(c2o) * dthw
+                wheel_deflection = wheel.r - y
+                fn = self.spring_force(wheel_deflection)
+                fs = fn * n
+                ff = self.friction_coef(-vc) * fn * t
+                f = fs + ff
+                forces.append((pc, f))
             # is_wheel_in_right_of_seg1 = logic_and(lmr1 == 1, ud1 >= 0)
             # is_wheel_in_left_of_seg2 = logic_and(lmr2 == -1, ud2 >= 0)
             # is_wheel_in_side = logic_and(is_wheel_in_right_of_seg1, is_wheel_in_left_of_seg2)
-            # is_wheel_in_range = logic_and(is_wheel_in_side, d < c.r)
-            vc = c.contact_vector_to_point(e2.p1)
-            # c.o.x += if_else(is_wheel_in_range, vc.x, 0)
-            # c.o.y += if_else(is_wheel_in_range, vc.y, 0)
-            c.o += vc
+            # is_wheel_in_range = logic_and(is_wheel_in_side, d < wheel.r)
+            # vc = wheel.contact_vector_to_point(e2.p1)
+            # wheel.o.x += if_else(is_wheel_in_range, vc.x, 0)
+            # wheel.o.y += if_else(is_wheel_in_range, vc.y, 0)
+            # wheel.o += vc
 
-        return c.o - c0.o
+        return forces
 
     def get_hull_distances(self, ph):
         if self.is_empty():

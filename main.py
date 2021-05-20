@@ -14,8 +14,9 @@ from robot import Robot
 
 
 N = 100  # number of control intervals
-nx = 6
-nu = 4
+nx = 18
+nu = 6
+g = 9.80665
 
 road = Road()
 road.add_node(-10, 0)
@@ -32,19 +33,17 @@ opti = Opti()  # Optimization problem
 
 # ---- decision variables ---------
 X = opti.variable(nx, N+1)  # state trajectory
-xh = X[0, :]
-yh = X[1, :]
-thh = X[2, :]
-tha1 = X[3, :]
-tha2 = X[4, :]
-tha3 = X[5, :]
-
+xh = X[0,:]
+yh = X[1,:]
+thh = X[2,:]
+tha1 = X[3,:]
+tha2 = X[4,:]
+tha3 = X[5,:]
 U = opti.variable(nu, N)   # control trajectory (throttle)
-vel = U[0, :]
+vel = U[0,:]
 dtha1 = U[1,:]
 dtha2 = U[2,:]
 dtha3 = U[3,:]
-
 T = opti.variable()      # final time
 dt = T/N  # length of a control interval
 
@@ -53,22 +52,33 @@ opti.minimize(T)  # race in minimal time
 
 
 # ---- dynamic constraints --------
-# f = lambda x,u: vertcat(x[1],u-x[1]) # dx/dt = f(x,u)
+# dx/dt = f(x,u)
 def f(x, u):
-    xh = x[0]
-    yh = x[1]
     thh = x[2]
-    tha = vertcat(x[3], x[4], x[5])
-    vel = u[0]
-    dtha = vertcat(u[1], u[2], u[3])
-    xh1, yh1, thh1, tha1 = robot.step(xh, yh, thh, tha, vel, dtha, dt, road)
-    dx1 = xh1
-    dx2 = yh1
-    dx3 = thh1
-    dx4 = tha1[0]
-    dx5 = tha1[1]
-    dx6 = tha1[2]
-    return vertcat(dx1, dx2, dx3, dx4, dx5, dx6)
+    tha1 = x[3]
+    tha2 = x[4]
+    tha3 = x[5]
+    mr = robot.mh + 3*robot.mw
+    Ia = robot.mw * robot.La**2
+    robot.q = x[:9]
+    robot.dq = x[9:]
+    Fx, Fy, Mz = robot.sum_wheel_forces(road)
+    return vertcat(
+        x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17],
+        Fx / mr,
+        Fy / mr - g,
+        (Mz - robot.mw * g * (
+            -robot.Ls[0]*cos(thh) - robot.Hs*sin(thh) + robot.La*sin(thh + tha1)
+            -robot.Ls[1]*cos(thh) - robot.Hs*sin(thh) + robot.La*sin(thh + tha2)
+            -robot.Ls[2]*cos(thh) - robot.Hs*sin(thh) + robot.La*sin(thh + tha3)
+            )) / (robot.Ih + 3*Ia),
+        (U[0] - robot.mw*g*robot.La*sin(thh + tha1)) / Ia,
+        (U[1] - robot.mw*g*robot.La*sin(thh + tha2)) / Ia,
+        (U[2] - robot.mw*g*robot.La*sin(thh + tha3)) / Ia,
+        U[3] / robot.Iw,
+        U[4] / robot.Iw,
+        U[5] / robot.Iw,
+    )
 
 
 for k in range(N):  # loop over control intervals
@@ -78,7 +88,7 @@ for k in range(N):  # loop over control intervals
     # k3 = f(X[:, k]+dt/2*k2, U[:, k])
     # k4 = f(X[:, k]+dt*k3,   U[:, k])
     # x_next = X[:, k] + dt/6*(k1+2*k2+2*k3+k4)
-    x_next = f(X[:,k], U[:,k])
+    x_next = X[:,k] + f(X[:,k], U[:,k]) * dt
     opti.subject_to(X[:, k+1] == x_next)  # close the gaps
 
 # ---- path constraints -----------
@@ -100,7 +110,7 @@ opti.subject_to(thh[-1] == 0)
 opti.subject_to(T >= 0)  # Time must be positive
 
 # ---- initial values for solver ---
-opti.set_initial(T, 1)
+opti.set_initial(T, 10)
 
 # ---- solve NLP              ------
 opti.solver("ipopt")  # set numerical backend
