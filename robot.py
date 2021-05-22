@@ -10,10 +10,10 @@ from road import Road, Wheel
 
 class Robot(object):
     nLeg = 3 # no. of legs
-    Lh = 40*cm # hull length
-    Hh = 12*cm # hull height
+    Lh = 20*cm # hull length
+    Hh = 6*cm # hull height
     Ls = [16*cm, 0*cm, -16*cm] # shoulder gap x from hull CG
-    Hs = -4*cm # shoulder gap z from hull CG
+    Hs =  4*cm # shoulder gap z from hull CG
     La =  8*cm # arm length
     Rw =  6*cm # wheel radius
     mh = 1.5
@@ -53,10 +53,10 @@ class Robot(object):
 
         return Wheel(pw, Robot.Rw), vw, -dthw
     
-    def spring_force(self, distance):
+    def wheel_spring_force(self, distance):
         fN0 = 0.1
         fN_hat = 1000
-        gN_hat = 0.1
+        gN_hat = 0.01
         return fN0 * (fN_hat / fN0)**(-distance / gN_hat)
     
     def friction_coef(self, slip_rate):
@@ -71,7 +71,7 @@ class Robot(object):
             pc = wheel.o + Vector2D(0, -wheel.r)
             distance = pc.y - road_height
             slip_rate = vw.x + wheel.r * dthw
-            fn = self.spring_force(distance)
+            fn = self.wheel_spring_force(distance)
             ft = -self.friction_coef(slip_rate) * fn
             fw = Vector2D(ft, fn)
             forces.extend([(pc,fw)])
