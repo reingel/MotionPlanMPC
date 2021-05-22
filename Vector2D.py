@@ -49,8 +49,8 @@ class Vector2D(object):
     
     def rotate(self, angle):
         return Vector2D(
-            cos(angle)*self.x - sin(angle)*self.y,
-            sin(angle)*self.x + cos(angle)*self.y
+            np.cos(angle)*self.x - np.sin(angle)*self.y,
+            np.sin(angle)*self.x + np.cos(angle)*self.y
         )
     
     def __neg__(self):
