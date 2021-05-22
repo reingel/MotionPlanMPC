@@ -76,16 +76,6 @@ class Road(object):
             normals.append(edge.normal_vector())
         return normals
     
-    def spring_force(self, deflection):
-        fN0 = 0.1
-        fN_hat = 1000
-        gN_hat = 0.1
-        return fN0 * (fN_hat / fN0)**(deflection / gN_hat)
-    
-    def friction_coef(self, slip_rate):
-        v_hat = 0.01
-        return np.tanh(slip_rate / v_hat)
-
     def wheel_forces(self, wheel: Wheel, vw, dthw):
         if not isinstance(wheel, Wheel):
             raise TypeError('can only take Wheel')

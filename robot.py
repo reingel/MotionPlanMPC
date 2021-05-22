@@ -53,11 +53,28 @@ class Robot(object):
 
         return Wheel(pw, Robot.Rw), vw, -dthw
     
+    def spring_force(self, distance):
+        fN0 = 0.1
+        fN_hat = 1000
+        gN_hat = 0.1
+        return fN0 * (fN_hat / fN0)**(-distance / gN_hat)
+    
+    def friction_coef(self, slip_rate):
+        v_hat = 0.01
+        return np.tanh(slip_rate / v_hat)
+
     def wheel_forces(self, road):
         forces = []
         for i in range(self.nLeg):
             wheel, vw, dthw = self.wheel(i)
-            forces.extend(road.wheel_forces(wheel, vw, dthw))
+            road_height = 0 #road.height(wheel.o.x)
+            pc = wheel.o + Vector2D(0, -wheel.r)
+            distance = pc.y - road_height
+            slip_rate = vw.x + wheel.r * dthw
+            fn = self.spring_force(distance)
+            ft = -self.friction_coef(slip_rate) * fn
+            fw = Vector2D(ft, fn)
+            forces.extend([(pc,fw)])
         return forces
     
     def sum_wheel_forces(self, road):
@@ -65,10 +82,14 @@ class Robot(object):
         Fx = 0
         Fy = 0
         Mz = 0
-        for r, force in forces:
-            Fx += force.x
-            Fy += force.y
-            Mz += r.cross(force)
+        xh = self.q[0]
+        yh = self.q[1]
+        ph = Vector2D(xh, yh)
+        for pc, fw in forces:
+            Fx += fw.x
+            Fy += fw.y
+            r = pc - ph
+            Mz += -r.cross(fw)
         return Fx, Fy, Mz
     
     def distance_to_road(self, xh, yh, thh, tha, vel, dtha, dt, road):
