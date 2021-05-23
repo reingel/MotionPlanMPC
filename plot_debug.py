@@ -47,8 +47,8 @@ plt.subplot(5,3,14)
 plt.plot(t,opti.debug.value(Fy))
 plt.legend(['Fy'])
 plt.subplot(5,3,15)
-plt.plot(t,opti.debug.value(M))
-plt.legend(['M'])
+plt.plot(t,opti.debug.value(Mz))
+plt.legend(['Mz'])
 
 
 
@@ -76,7 +76,7 @@ t = np.arange(N+1)
 def draw_road():
     road_x = np.linspace(-0.5,3,100)
     # road_y = road_amp*np.sin(2*np.pi*road_freq*road_x)
-    road_y = road_amp*np.tanh(100*(road_x - 1))
+    road_y = road_amp*(np.tanh(100*(road_x - 1)) + 1)/2
     plt.plot(road_x,road_y,'k')
 
 fig = plt.figure(11, frameon=False)
