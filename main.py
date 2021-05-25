@@ -24,7 +24,7 @@ nx = 6
 N = 40
 dt = 0.05
 
-obs_height = 0.08
+obs_height = 0.1
 obs_start = 1.0
 
 # robot = Robot(0, 0.14, 0, np.zeros(3))
@@ -61,10 +61,6 @@ dtha1 = tha1[1:N] - tha1[0:N-1]
 dtha2 = tha2[1:N] - tha2[0:N-1]
 dtha3 = tha3[1:N] - tha3[0:N-1]
 
-# object function
-energy = sum1(sum2((X[1:N] - X[0:N-1])**2)) / (nx*N)
-opti.minimize(energy)
-
 # ---- dynamic constraints --------
 # dx/dt = f(x,u)
 # def f(x, u):
@@ -79,7 +75,7 @@ def sigmoid(x):
     return 1 / (1 + exp(-x))
 
 def road_height(x):
-    return obs_height*sigmoid(100*(x-obs_start))
+    return obs_height*sigmoid(50*(x-obs_start))
 
 # def wheel_path(x,k,d):
 #     return obs_height*sigmoid(k*(x - (obs_start - d))) + Rw
@@ -132,25 +128,48 @@ wheel3_x_wrt_hull = wheel3x - xh
 # ) - road_height(xh)
 # opti.subject_to(hull_gap > 0)
 
-wheel1_gap = wheel1y - Rw - road_height(xh)
-wheel2_gap = wheel2y - Rw - road_height(xh)
-wheel3_gap = wheel3y - Rw - road_height(xh)
+wheel1_gap = wheel1y - Rw - road_height(wheel1x)
+wheel2_gap = wheel2y - Rw - road_height(wheel2x)
+wheel3_gap = wheel3y - Rw - road_height(wheel3x)
 
-opti.subject_to(wheel1_gap >= 0)
-opti.subject_to(wheel2_gap >= 0)
-opti.subject_to(wheel3_gap >= 0)
+def wheel1_gap_max(wheel2_x_wrt_hull, wheel2_gap):
+    max1 = 0.1*exp(500*wheel2_x_wrt_hull)
+    max2 = 1*exp(-500*wheel2_gap)
+    return fmin(max1, max2)
+
+def wheel2_gap_max(wheel1_gap, wheel3_gap):
+    return 1*exp(-500*(wheel1_gap + wheel3_gap))
+
+def wheel3_gap_max(wheel2_x_wrt_hull, wheel2_gap):
+    max1 = 0.1*exp(-500*wheel2_x_wrt_hull)
+    max2 = 1*exp(-500*wheel2_gap)
+    return fmin(max1, max2)
+
+opti.subject_to(opti.bounded(0, wheel1_gap, wheel1_gap_max(wheel2_x_wrt_hull, wheel2_gap)))
+opti.subject_to(opti.bounded(0, wheel2_gap, wheel2_gap_max(wheel1_gap, wheel3_gap)))
+opti.subject_to(opti.bounded(0, wheel3_gap, wheel3_gap_max(wheel2_x_wrt_hull, wheel2_gap)))
+
+# opti.subject_to(wheel1_gap <= wheel1_gap_max(wheel2_x_wrt_hull, wheel2_gap))
+# opti.subject_to(wheel2_gap <= wheel2_gap_max(wheel1_gap, wheel3_gap))
+# opti.subject_to(wheel3_gap <= wheel3_gap_max(wheel2_x_wrt_hull, wheel2_gap))
 
 # static equilibrium constraints
 force_wh1 = wheel_spring_force(wheel1_gap)
 force_wh2 = wheel_spring_force(wheel2_gap)
 force_wh3 = wheel_spring_force(wheel3_gap)
 
-opti.subject_to(wheel1_gap*force_wh1 + wheel2_gap*force_wh2 + wheel3_gap*force_wh3 <= 0.1)
+# opti.subject_to(wheel1_gap*force_wh1 + wheel2_gap*force_wh2 + wheel3_gap*force_wh3 <= 0.1)
 
-# Fy = force_wh1 + force_wh2 + force_wh3
-# Mz = -(wheel1_x_wrt_hull*force_wh1 + wheel2_x_wrt_hull*force_wh2 + wheel3_x_wrt_hull*force_wh3)
-# opti.subject_to(Fy == Wr)
-# opti.subject_to(Mz == 0)
+Fy = force_wh1 + force_wh2 + force_wh3
+Mz = -(wheel1_x_wrt_hull*force_wh1 + wheel2_x_wrt_hull*force_wh2 + wheel3_x_wrt_hull*force_wh3)
+# opti.subject_to((Fy - Wr)**2 <= 10)
+# opti.subject_to(Mz**2 <= 10)
+
+# object function
+mterm = 0#(xh[-1] - 1.5)**2
+# lterm = sum1(sum2((X[1:N] - X[0:N-1])**2)) / (nx*N)
+lterm = sum1(sum2(((Fy - Wr)**2 + Mz**2))/N)
+opti.minimize(mterm + lterm)
 
 # force/moment limits
 # for k in range(N-1):
@@ -171,9 +190,9 @@ opti.subject_to(opti.bounded(0*deg, tha3, 90*deg))
 
 opti.subject_to(opti.bounded(0, dxh/dt, 1))
 opti.subject_to(opti.bounded(-0.5, dyh/dt, 0.5))
-opti.subject_to(opti.bounded(-10*deg, dthh/dt, 10*deg))
+opti.subject_to(opti.bounded(-100*deg, dthh/dt, 100*deg))
 opti.subject_to(opti.bounded(-10*deg, dtha1/dt, 10*deg))
-opti.subject_to(opti.bounded(-10*deg, dtha2/dt, 10*deg))
+opti.subject_to(opti.bounded(-20*deg, dtha2/dt, 20*deg))
 opti.subject_to(opti.bounded(-10*deg, dtha3/dt, 10*deg))
 
 # control input constraits
@@ -187,10 +206,17 @@ opti.subject_to(opti.bounded(-10*deg, dtha3/dt, 10*deg))
 # ---- boundary conditions --------
 opti.subject_to(xh[0] == 0)
 opti.subject_to(yh[0] == 0.14)
-opti.subject_to(thh[0] == 0)
+opti.subject_to(thh[0] == 0*deg)
 opti.subject_to(tha1[0] == -60*deg)
-opti.subject_to(tha2[0] == 60*deg)
+opti.subject_to(tha2[0] == -60*deg)
 opti.subject_to(tha3[0] == 60*deg)
+
+opti.subject_to(xh[-1] == xh[0] + 1.5)
+opti.subject_to(yh[-1] == yh[0] + road_height(1.5))
+opti.subject_to(thh[-1] == thh[0])
+opti.subject_to(tha1[-1] == tha1[0])
+opti.subject_to(tha2[-1] == tha2[0])
+opti.subject_to(tha3[-1] == tha3[0])
 
 # opti.subject_to(opti.bounded(10, K, 100))
 # opti.subject_to(opti.bounded(0.1, D, 1))
@@ -207,7 +233,7 @@ opti.set_initial(tha3, 60*deg)
 # opti.set_initial(D, 0.5)
 
 # ---- solve NLP              ------
-opti.solver("ipopt",{'expand':True},{'max_iter':10000})
+opti.solver("ipopt",{'expand':True},{'max_iter':3000})
 sol = opti.solve()   # actual solve
 
 # ---- post-processing        ------
