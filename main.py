@@ -25,6 +25,7 @@ N = 40
 dt = 0.05
 
 obs_height = 0.08
+obs_start = 1.0
 
 # robot = Robot(0, 0.14, 0, np.zeros(3))
 Lh = Robot.Lh
@@ -38,12 +39,13 @@ Wr = mr*g # Robot weight
 Ia = Robot.mw*Robot.La**2
 
 opti = Opti()  # Optimization problem
+opti_con = Opti()
 
 # ---- decision variables ---------
 X = opti.variable(nx, N)
 # U = opti.variable(nx, N)
-K = opti.variable()
-D = opti.variable()
+# K = opti.variable()
+# D = opti.variable()
 
 xh = X[0,:]
 yh = X[1,:]
@@ -52,15 +54,15 @@ tha1 = X[3,:]
 tha2 = X[4,:]
 tha3 = X[5,:]
 
+dxh = xh[1:N] - xh[0:N-1]
+dyh = yh[1:N] - yh[0:N-1]
+dthh = thh[1:N] - thh[0:N-1]
+dtha1 = tha1[1:N] - tha1[0:N-1]
+dtha2 = tha2[1:N] - tha2[0:N-1]
+dtha3 = tha3[1:N] - tha3[0:N-1]
+
 # object function
-energy = sqrt(sum2(
-    (xh[1:N] - xh[0:N-1])**2 +
-    (yh[1:N] - yh[0:N-1])**2 +
-    (thh[1:N] - thh[0:N-1])**2 +
-    (tha1[1:N] - tha1[0:N-1])**2 +
-    (tha2[1:N] - tha2[0:N-1])**2 +
-    (tha3[1:N] - tha3[0:N-1])**2
-) / (nx*N))
+energy = sum1(sum2((X[1:N] - X[0:N-1])**2)) / (nx*N)
 opti.minimize(energy)
 
 # ---- dynamic constraints --------
@@ -76,12 +78,23 @@ opti.minimize(energy)
 def sigmoid(x):
     return 1 / (1 + exp(-x))
 
-def wheel_path(x,k,d):
-    return obs_height*sigmoid(k*(x - d))
+def road_height(x):
+    return obs_height*sigmoid(100*(x-obs_start))
 
-# approaching angle
-aprc_angle = obs_height*K*exp(-K*D) / (1 + exp(-K*D))**2
-opti.subject_to(aprc_angle < 5*deg)
+# def wheel_path(x,k,d):
+#     return obs_height*sigmoid(k*(x - (obs_start - d))) + Rw
+
+def wheel_spring_force(distance):
+    fN0 = 0.1
+    fN_hat = 1000
+    gN_hat = 0.1
+    # return fN0 * (fN_hat / fN0)**(-distance / gN_hat)
+    # return fN0*log(1 + exp(-fN_hat/gN_hat*distance))
+    return fN0 * exp(-1400*distance)
+    
+# # approaching angle
+# aprc_angle = obs_height*K*exp(-K*D) / (1 + exp(-K*D))**2
+# opti.subject_to(aprc_angle < 5*deg)
 
 # follow path
 wheel1x = xh + Ls[0]*cos(-thh) - Hs*sin(-thh) + La*sin(-thh-tha1)
@@ -91,9 +104,20 @@ wheel1y = yh + Ls[0]*sin(-thh) - Hs*cos(-thh) - La*cos(-thh-tha1)
 wheel2y = yh + Ls[1]*sin(-thh) - Hs*cos(-thh) - La*cos(-thh-tha2)
 wheel3y = yh + Ls[2]*sin(-thh) - Hs*cos(-thh) - La*cos(-thh-tha3)
 
-opti.subject_to(wheel1y == wheel_path(wheel1x,K,D) + Rw)
-opti.subject_to(wheel2y == wheel_path(wheel2x,K,D) + Rw)
-opti.subject_to(wheel3y == wheel_path(wheel3x,K,D) + Rw)
+wheel1_x_wrt_hull = wheel1x - xh
+wheel2_x_wrt_hull = wheel2x - xh
+wheel3_x_wrt_hull = wheel3x - xh
+
+# wheel1_path = wheel_path(wheel1x,K,D)
+# wheel2_path = wheel_path(wheel2x,K,D)
+# wheel3_path = wheel_path(wheel3x,K,D)
+
+# opti.subject_to(wheel1y == wheel1_path)
+# opti.subject_to(wheel2y == wheel2_path)
+# opti.subject_to(wheel3y == wheel3_path)
+
+# obstacle crossing complete
+# opti.subject_to(wheel3x[-1] > 1.0)
 
 # contact constraints
 # hull_gap = fmin(
@@ -108,20 +132,21 @@ opti.subject_to(wheel3y == wheel_path(wheel3x,K,D) + Rw)
 # ) - road_height(xh)
 # opti.subject_to(hull_gap > 0)
 
-# wheel1_gap = wheel1y - Rw - road_height(xh)
-# wheel2_gap = wheel2y - Rw - road_height(xh)
-# wheel3_gap = wheel3y - Rw - road_height(xh)
-# opti.subject_to(wheel1_gap > -Rw/10)
-# opti.subject_to(wheel2_gap > -Rw/10)
-# opti.subject_to(wheel3_gap > -Rw/10)
+wheel1_gap = wheel1y - Rw - road_height(xh)
+wheel2_gap = wheel2y - Rw - road_height(xh)
+wheel3_gap = wheel3y - Rw - road_height(xh)
 
-# quasi-static equilibrium constraints
-# wheel1_x_wrt_hull = wheel1x - xh
-# wheel2_x_wrt_hull = wheel2x - xh
-# wheel3_x_wrt_hull = wheel3x - xh
-# force_wh1 = robot.wheel_spring_force(wheel1_gap)
-# force_wh2 = robot.wheel_spring_force(wheel2_gap)
-# force_wh3 = robot.wheel_spring_force(wheel3_gap)
+opti.subject_to(wheel1_gap >= 0)
+opti.subject_to(wheel2_gap >= 0)
+opti.subject_to(wheel3_gap >= 0)
+
+# static equilibrium constraints
+force_wh1 = wheel_spring_force(wheel1_gap)
+force_wh2 = wheel_spring_force(wheel2_gap)
+force_wh3 = wheel_spring_force(wheel3_gap)
+
+opti.subject_to(wheel1_gap*force_wh1 + wheel2_gap*force_wh2 + wheel3_gap*force_wh3 <= 0.1)
+
 # Fy = force_wh1 + force_wh2 + force_wh3
 # Mz = -(wheel1_x_wrt_hull*force_wh1 + wheel2_x_wrt_hull*force_wh2 + wheel3_x_wrt_hull*force_wh3)
 # opti.subject_to(Fy == Wr)
@@ -144,6 +169,13 @@ opti.subject_to(opti.bounded(-90*deg, tha1, 0*deg))
 opti.subject_to(opti.bounded(-90*deg, tha2, 90*deg))
 opti.subject_to(opti.bounded(0*deg, tha3, 90*deg))
 
+opti.subject_to(opti.bounded(0, dxh/dt, 1))
+opti.subject_to(opti.bounded(-0.5, dyh/dt, 0.5))
+opti.subject_to(opti.bounded(-10*deg, dthh/dt, 10*deg))
+opti.subject_to(opti.bounded(-10*deg, dtha1/dt, 10*deg))
+opti.subject_to(opti.bounded(-10*deg, dtha2/dt, 10*deg))
+opti.subject_to(opti.bounded(-10*deg, dtha3/dt, 10*deg))
+
 # control input constraits
 # opti.subject_to(opti.bounded(0, vxh, 1))
 # opti.subject_to(opti.bounded(-0.5, vyh, 0.5))
@@ -153,23 +185,26 @@ opti.subject_to(opti.bounded(0*deg, tha3, 90*deg))
 # opti.subject_to(opti.bounded(-10*deg, dtha3, 10*deg))
 
 # ---- boundary conditions --------
-# opti.subject_to(xh[0] == 0)
-# opti.subject_to(yh[0] == 0.14)
-# opti.subject_to(thh[0] == 0)
-# opti.subject_to(tha1[0] == -60*deg)
-# opti.subject_to(tha2[0] == 60*deg)
-# opti.subject_to(tha3[0] == 60*deg)
+opti.subject_to(xh[0] == 0)
+opti.subject_to(yh[0] == 0.14)
+opti.subject_to(thh[0] == 0)
+opti.subject_to(tha1[0] == -60*deg)
+opti.subject_to(tha2[0] == 60*deg)
+opti.subject_to(tha3[0] == 60*deg)
+
+# opti.subject_to(opti.bounded(10, K, 100))
+# opti.subject_to(opti.bounded(0.1, D, 1))
 
 # ---- initial values for solver ---
 opti.set_initial(xh, 0)
 opti.set_initial(yh, 0.14)
 opti.set_initial(thh, 0*deg)
 opti.set_initial(tha1, -60*deg)
-opti.set_initial(tha2, 60*deg)
+opti.set_initial(tha2, -60*deg)
 opti.set_initial(tha3, 60*deg)
 # opti.set_initial(U, 0)
-opti.set_initial(K, 1)
-opti.set_initial(D, 0.5)
+# opti.set_initial(K, 1)
+# opti.set_initial(D, 0.5)
 
 # ---- solve NLP              ------
 opti.solver("ipopt",{'expand':True},{'max_iter':10000})

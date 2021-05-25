@@ -1,6 +1,6 @@
 
-t = np.arange(N+1)
-tu = np.arange(N)
+t = np.arange(N)
+t1 = np.arange(N-1)
 
 plt.figure(1)
 plt.clf()
@@ -14,15 +14,6 @@ plt.legend(['yh'])
 plt.subplot(533)
 plt.plot(t,opti.debug.value(thh)/deg)
 plt.legend(['thh'])
-plt.subplot(534)
-plt.plot(tu,opti.debug.value(vxh))
-plt.legend(['vxh'])
-plt.subplot(535)
-plt.plot(tu,opti.debug.value(vyh))
-plt.legend(['vyh'])
-plt.subplot(536)
-plt.plot(tu,opti.debug.value(dthh)/deg)
-plt.legend(['dthh'])
 plt.subplot(537)
 plt.plot(t,opti.debug.value(tha3)/deg)
 plt.legend(['tha3'])
@@ -32,32 +23,51 @@ plt.legend(['tha2'])
 plt.subplot(539)
 plt.plot(t,opti.debug.value(tha1)/deg)
 plt.legend(['tha1'])
-plt.subplot(5,3,10)
-plt.plot(tu,opti.debug.value(dtha1)/deg,tu,opti.debug.value(dtha2)/deg,tu,opti.debug.value(dtha3)/deg)
-plt.legend(['dtha1','dtha2','dtha3'])
 
-plt.subplot(5,3,11)
-plt.plot(t,opti.debug.value(wheel1_gap),t,opti.debug.value(wheel2_gap),t,opti.debug.value(wheel3_gap))
-plt.legend(['wheel1_gap','wheel2_gap','wheel3_gap'])
+plt.subplot(534)
+plt.plot(t1,opti.debug.value(dxh))
+plt.legend(['dxh'])
 
-plt.subplot(5,3,12)
-plt.plot(t,opti.debug.value(hull_gap))
-plt.legend(['hull_gap'])
+# k = opti.debug.value(K)
+# d = opti.debug.value(D)
+x = np.linspace(-0.5,2,100)
+road_y = obs_height*sigmoid(100*(x-1))
+# wheel_y = wheel_path(x, k, d)
+
+plt.subplot(5,3,13)
+plt.plot(x,road_y,'k',opti.debug.value(wheel3x),opti.debug.value(wheel3y))
+plt.legend(['wheel3_path'])
 plt.subplot(5,3,14)
+plt.plot(x,road_y,'k',opti.debug.value(wheel2x),opti.debug.value(wheel2y))
+plt.legend(['wheel2_path'])
+plt.subplot(5,3,15)
+plt.plot(x,road_y,'k',opti.debug.value(wheel1x),opti.debug.value(wheel1y))
+plt.legend(['wheel1_path'])
+
+# plt.subplot(5,3,13)
+# plt.plot(x,road_y,'k',x,wheel_y,'r',opti.debug.value(wheel3x),opti.debug.value(wheel3y))
+# plt.legend(['wheel3_path','wheel3y'])
+# plt.subplot(5,3,14)
+# plt.plot(x,road_y,'k',x,wheel_y,'r',opti.debug.value(wheel2x),opti.debug.value(wheel2y))
+# plt.legend(['wheel2_path','wheel2y'])
+# plt.subplot(5,3,15)
+# plt.plot(x,road_y,'k',x,wheel_y,'r',opti.debug.value(wheel1x),opti.debug.value(wheel1y))
+# plt.legend(['wheel1_path','wheel1y'])
+
+plt.show()
+
+# plt.subplot(5,3,10)
+# plt.plot(t,opti.debug.value(hull_gap))
+# plt.legend(['hull_gap'])
+plt.subplot(5,3,11)
 plt.plot(t,opti.debug.value(Fy))
 plt.legend(['Fy'])
-plt.subplot(5,3,15)
+plt.subplot(5,3,12)
 plt.plot(t,opti.debug.value(Mz))
 plt.legend(['Mz'])
 
 
 
-Lh = robot.Lh
-Hh = robot.Hh
-La = robot.La
-Rw = robot.Rw
-Ls = robot.Ls
-Hs = robot.Hs
 
 def draw_circle(x,y,r):
     xs = []
@@ -70,14 +80,15 @@ def draw_circle(x,y,r):
     plt.plot(xs,ys)
 
 # ---- animate ----
-t = np.arange(N+1)
-
 # road
 def draw_road():
-    road_x = np.linspace(-0.5,3,100)
-    # road_y = road_amp*np.sin(2*np.pi*road_freq*road_x)
-    road_y = road_amp*(np.tanh(100*(road_x - 1)) + 1)/2
-    plt.plot(road_x,road_y,'k')
+    # k = opti.debug.value(K)
+    # d = opti.debug.value(D)
+    x = np.linspace(-0.5,3,100)
+    road_y = obs_height*sigmoid(100*(x-1))
+    # wheel_y = wheel_path(x, k, d)
+    # plt.plot(x,road_y,'k',x,wheel_y,'b')
+    plt.plot(x,road_y,'k')
 
 fig = plt.figure(11, frameon=False)
 
@@ -128,7 +139,7 @@ def update(i):
     draw_circle(wheel_3_x,wheel_3_y,Rw)
 
 
-ani = FuncAnimation(fig, update, frames=np.arange(N+1), interval=100)
+ani = FuncAnimation(fig, update, frames=np.arange(N), interval=100)
 
 plt.show()
 
